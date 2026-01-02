@@ -1,2 +1,4 @@
 - hacer bien los export de packages
 - meter web para probar
+- donde se guarda el refresh token porque la api la devuelve en cookies y mobile no permite cookies
+- usar expo secure store

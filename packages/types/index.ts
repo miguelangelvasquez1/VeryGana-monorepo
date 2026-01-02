@@ -5,4 +5,5 @@ export interface Campaign {
 }
 
 export * from './src/ads/adsTypes';
+export * from './src/games/gamesTypes';
 export * from './src/generic/responses';

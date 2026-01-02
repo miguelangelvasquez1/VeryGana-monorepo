@@ -20,7 +20,11 @@ export default function RootLayout() {
   return (
     <AuthProvider>
         <QueryClientProvider client={queryClient}>
-            <Stack />
+            <Stack
+                screenOptions={{
+                    headerShown: false,
+                }}
+                />
         </QueryClientProvider>
     </AuthProvider>
   );

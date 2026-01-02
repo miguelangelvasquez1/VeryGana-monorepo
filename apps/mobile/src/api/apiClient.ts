@@ -23,6 +23,7 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   r => r,
   async error => {
+    console.log("respponse");
     if (error.response?.status !== 401) throw error;
 
     if (isRefreshing) {
