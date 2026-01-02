@@ -1,0 +1,2 @@
+- hacer bien los export de packages
+- meter web para probar

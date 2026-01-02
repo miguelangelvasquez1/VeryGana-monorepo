@@ -1,0 +1,17 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@verygana/api": ["../../packages/api/src"],
+      "@verygana/types": ["../../packages/types/src"],
+      "@verygana/hooks": ["../../packages/hooks/src"],
+    }
+  },  
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ]
+}
