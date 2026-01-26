@@ -1,122 +1,139 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
+  Share,
   View,
   Text,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   ActivityIndicator,
   Animated,
-  Platform,
+  Linking,
+  Alert,
+  Dimensions,
 } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { VideoView, useVideoPlayer } from 'expo-video';
 import { Image } from 'expo-image';
-import { useActiveAds } from '../../src/hooks/adHooks';
+import { useNextAd, useLikeAd } from '../../src/hooks/adHooks';
 import { AdForConsumerDTO } from '@verygana/types';
 import VideoControls from '../../components/tabs/ads/VideoControls';
-import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect } from '@react-navigation/native';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-interface VideoAdPlayerProps {
-  page?: number;
-  size?: number;
-}
-
-export default function VideoAdPlayer({ page = 0, size = 10 }: VideoAdPlayerProps) {
-  const { data, isLoading, isError, error } = useActiveAds(page, size);
-
-  const adsArray = useMemo<AdForConsumerDTO[]>(() => {
-    if (!data) return [];
-    if ((data as any).content) return (data as any).content;
-    if ((data as any).items) return (data as any).items;
-    if (Array.isArray(data)) return data;
-    return [];
-  }, [data]);
-
-  const medias = useMemo(
-    () =>
-      adsArray.map((ad) => ({
-        id: ad.id,
-        src: ad.contentUrl,
-        title: ad.title,
-        description: ad.description ?? '',
-        brand: ad.advertiserName ?? 'Anunciante',
-        likes: ad.currentLikes ?? 0,
-        type: ad.mediaType ?? 'VIDEO',
-        duration: ad.mediaType === 'VIDEO' ? 0 : 30,
-      })),
-    [adsArray]
-  );
-
-  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+export default function VideoAdPlayer() {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [progress, setProgress] = useState(0);
   const [watchTime, setWatchTime] = useState(0);
   const [duration, setDuration] = useState(30);
   const [isLiked, setIsLiked] = useState(false);
+  const [rewardAmount, setRewardAmount] = useState<number | null>(null);
   const [showReward, setShowReward] = useState(false);
+  const [hasReachedEnd, setHasReachedEnd] = useState(false);
+  const [currentAd, setCurrentAd] = useState<AdForConsumerDTO | null>(null);
 
-  const videoRef = useRef<Video>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const insets = useSafeAreaInsets();
+
+  const timerRef = useRef<number | null>(null);
   const rewardOpacity = useRef(new Animated.Value(0)).current;
-  const isSwitching = useRef(false);
 
-  const currentMedia = medias[currentMediaIndex];
+  // Crear el player de video
+  const player = useVideoPlayer(
+    currentAd?.mediaType === 'VIDEO' ? currentAd.contentUrl : '',
+    (player) => {
+      player.loop = false;
+      player.muted = false;
+    }
+  );
 
-  const formattedLikes = useMemo(() => {
-    if (!currentMedia) return '0';
-    return new Intl.NumberFormat('es-CO').format(currentMedia.likes);
-  }, [currentMedia?.likes]);
+  const { mutate: getNextAd, isPending: isLoadingAd } = useNextAd();
+  const { mutate: likeAd, isPending: isLikingAd } = useLikeAd();
 
-  // Gesture handler para swipe vertical
-  const panGesture = Gesture.Pan()
-    .onEnd((event) => {
-      if (isSwitching.current) return;
+  useEffect(() => {
+    loadNextAd();
+  }, []);
 
-      const threshold = 50;
-      if (Math.abs(event.velocityY) > threshold) {
-        isSwitching.current = true;
-        setTimeout(() => {
-          isSwitching.current = false;
-        }, 500);
+  // Actualizar el source del player cuando cambia el ad
+  useEffect(() => {
+    if (currentAd?.mediaType === 'VIDEO' && currentAd.contentUrl) {
+      player.replaceAsync(currentAd.contentUrl);
+      player.play();
+    }
+  }, [currentAd?.id]);
 
-        if (event.velocityY < 0) {
-          handleNext();
-        } else {
-          handlePrev();
-        }
-      }
+  // Listener para el estado del video
+  useEffect(() => {
+    if (!currentAd || currentAd.mediaType !== 'VIDEO') return;
+
+    const subscription = player.addListener('playingChange', (event) => {
+      setIsPlaying(event.isPlaying);
     });
 
-  // Reset cuando cambia la lista de medias
-  useEffect(() => {
-    if (medias.length === 0) {
-      setCurrentMediaIndex(0);
-      setIsPlaying(false);
-      return;
-    }
-    if (currentMediaIndex >= medias.length) {
-      setCurrentMediaIndex(0);
-    }
-  }, [medias.length, currentMediaIndex]);
+    return () => {
+      subscription.remove();
+    };
+  }, [currentAd?.id, player]);
 
-  // Reset estados cuando cambia el media actual
+  // Listener para el progreso del video
   useEffect(() => {
-    if (!currentMedia) return;
+    if (!currentAd || currentAd.mediaType !== 'VIDEO') return;
 
+    const interval = setInterval(() => {
+      const currentTime = player.currentTime;
+      const dur = player.duration;
+
+      if (dur > 0) {
+        setDuration(dur);
+        setProgress((currentTime / dur) * 100);
+        setWatchTime(currentTime);
+
+        // Detectar fin del video
+        if (currentTime >= dur - 0.1 && !hasReachedEnd) {
+          setHasReachedEnd(true);
+          setProgress(100);
+          setIsPlaying(false);
+          player.pause();
+        }
+      }
+    }, 1000 / 60);
+
+    return () => clearInterval(interval);
+  }, [currentAd?.id, player, hasReachedEnd]);
+
+  const loadNextAd = () => {
+    getNextAd(undefined, {
+      onSuccess: (ad) => {
+        if (ad) {
+          setCurrentAd(ad);
+          resetAdState();
+        } else {
+          setCurrentAd(null);
+        }
+      },
+      onError: (error) => {
+        console.error('Error cargando anuncio:', error);
+      },
+    });
+  };
+
+  const resetAdState = () => {
     setProgress(0);
     setWatchTime(0);
     setIsLiked(false);
     setShowReward(false);
-    setDuration(currentMedia.type === 'IMAGE' ? 30 : 0);
-  }, [currentMedia?.id]);
+    setHasReachedEnd(false);
+    setIsPlaying(true);
+    setIsExpanded(false);
+    rewardOpacity.setValue(0);
+  };
 
-  // Manejo de reproducción
+  // Manejo de reproducción para imágenes
   useEffect(() => {
-    if (!currentMedia) return;
+    if (!currentAd || hasReachedEnd) return;
 
-    const isImage = currentMedia.type === 'IMAGE';
+    const isImage = currentAd.mediaType === 'IMAGE';
 
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -132,16 +149,14 @@ export default function VideoAdPlayer({ page = 0, size = 10 }: VideoAdPlayerProp
 
         if (elapsed >= imageDuration) {
           clearInterval(timerRef.current!);
-          handleNext();
+          setHasReachedEnd(true);
+          setProgress(100);
+          setIsPlaying(false);
           return;
         }
 
         setWatchTime(elapsed);
         setProgress((elapsed / imageDuration) * 100);
-
-        if (elapsed / imageDuration > 0.8 && !showReward) {
-          triggerReward();
-        }
       }, 1000 / 60);
 
       return () => {
@@ -150,225 +165,288 @@ export default function VideoAdPlayer({ page = 0, size = 10 }: VideoAdPlayerProp
         }
       };
     }
-  }, [currentMedia?.id, isPlaying, watchTime]);
+  }, [currentAd?.id, isPlaying, hasReachedEnd, watchTime]);
 
-  const triggerReward = () => {
+  const triggerReward = (amount: number) => {
+    setRewardAmount(amount);
     setShowReward(true);
     Animated.sequence([
       Animated.timing(rewardOpacity, {
         toValue: 1,
-        duration: 300,
+        duration: 400,
         useNativeDriver: true,
       }),
-      Animated.delay(2700),
+      Animated.delay(2600),
       Animated.timing(rewardOpacity, {
         toValue: 0,
-        duration: 300,
+        duration: 400,
         useNativeDriver: true,
       }),
-    ]).start(() => setShowReward(false));
+    ]).start(() => {
+      setShowReward(false);
+      setRewardAmount(null);
+      loadNextAd();
+    });
   };
 
-  const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) return;
+  const togglePlayPause = () => {
+    if (!currentAd || hasReachedEnd) return;
 
-    if (status.durationMillis) {
-      setDuration(status.durationMillis / 1000);
-    }
-
-    if (status.positionMillis !== undefined && status.durationMillis) {
-      const currentTime = status.positionMillis / 1000;
-      const dur = status.durationMillis / 1000;
-
-      setProgress((currentTime / dur) * 100);
-      setWatchTime(currentTime);
-
-      if (currentTime / dur > 0.8 && !showReward) {
-        triggerReward();
-      }
-    }
-
-    if (status.didJustFinish) {
-      handleNext();
-    }
-
-    setIsPlaying(status.isPlaying);
-  };
-
-  const togglePlayPause = async () => {
-    const isImage = currentMedia?.type === 'IMAGE';
+    const isImage = currentAd.mediaType === 'IMAGE';
 
     if (isImage) {
       setIsPlaying((prev) => !prev);
     } else {
-      const video = videoRef.current;
-      if (!video) return;
-
-      const status = await video.getStatusAsync();
-      if (status.isLoaded) {
-        if (status.isPlaying) {
-          await video.pauseAsync();
-        } else {
-          await video.playAsync();
-        }
+      if (player.playing) {
+        player.pause();
+      } else {
+        player.play();
       }
     }
   };
 
   const handleLike = () => {
-    setIsLiked((prev) => !prev);
-    // TODO: Llamar API para registrar like
+    if (!currentAd || isLikingAd || isLiked || !hasReachedEnd) return;
+
+    likeAd(
+      {
+        adId: currentAd.id,
+        sessionUUID: currentAd.sessionUUID,
+      },
+      {
+        onSuccess: (res) => {
+          setIsLiked(true);
+
+          if (res.rewardAmount > 0) {
+            triggerReward(res.rewardAmount);
+          } else {
+            setTimeout(() => {
+              loadNextAd();
+            }, 500);
+          }
+        },
+        onError: (error) => {
+          Alert.alert(
+            'Error',
+            'No se pudo registrar el like. Intenta nuevamente.'
+          );
+          console.error('Error al dar like:', error);
+        },
+      }
+    );
   };
 
-  function handleNext() {
-    setCurrentMediaIndex((prev) => (prev < medias.length - 1 ? prev + 1 : 0));
-    setIsPlaying(true);
+  const handleVisitAd = async () => {
+    if (!currentAd?.targetUrl) return;
+
+    const supported = await Linking.canOpenURL(currentAd.targetUrl);
+    if (supported) {
+      await Linking.openURL(currentAd.targetUrl);
+    } else {
+      Alert.alert('Error', 'No se puede abrir este enlace');
+    }
   };
 
-  function handlePrev () {
-    setCurrentMediaIndex((prev) => (prev > 0 ? prev - 1 : medias.length - 1));
-    setIsPlaying(true);
-  };
+  const handleShare = async () => {
+    if (!currentAd) return;
 
-  const handleShare = () => {
-    console.log('Compartir:', currentMedia);
-    // TODO: Implementar compartir con Share API de Expo
+    try {
+      await Share.share({
+        title: currentAd.title ?? 'Anuncio',
+        message: `${currentAd.title}\n\n${currentAd.description}\n\nMíralo aquí: ${currentAd.contentUrl}`,
+        url: currentAd.contentUrl, // iOS usa esto
+      });
+    } catch (error) {
+      console.error('Error compartiendo anuncio:', error);
+    }
   };
 
   const handleSave = () => {
-    console.log('Guardar:', currentMedia);
-    // TODO: Implementar guardar
+    if (!currentAd) return;
+    console.log('Guardar:', currentAd);
   };
 
-  if (isLoading) {
+  useFocusEffect(
+    useCallback(() => {
+      if (currentAd && !hasReachedEnd) {
+        setIsPlaying(true);
+        if (currentAd.mediaType === 'VIDEO') {
+          player.play();
+        }
+        // Para imágenes, el useEffect maneja el timer con isPlaying
+      }
+
+      return () => {
+        if (currentAd && !hasReachedEnd) {
+          setIsPlaying(false);
+          if (currentAd.mediaType === 'VIDEO') {
+            player.pause();
+          }
+          // Para imágenes, setting isPlaying a false detiene el timer
+        }
+      };
+    }, [currentAd, hasReachedEnd, player])
+  );
+
+  if (isLoadingAd && !currentAd) {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#FFFFFF" />
-        <Text style={styles.loadingText}>Cargando anuncios...</Text>
+        <Text style={styles.loadingText}>Cargando anuncio...</Text>
       </View>
     );
   }
 
-  if (isError) {
+  if (!currentAd) {
     return (
       <View style={styles.centerContainer}>
-        <Text style={styles.errorTitle}>⚠️ Error cargando anuncios</Text>
-        <Text style={styles.errorMessage}>
-          {(error as any)?.message ?? 'Error desconocido'}
-        </Text>
+        <Text style={styles.emptyTitle}>No hay más anuncios disponibles</Text>
       </View>
     );
   }
 
-  if (!currentMedia) {
-    return (
-      <View style={styles.centerContainer}>
-        <Text style={styles.emptyText}>No hay anuncios activos disponibles.</Text>
-      </View>
-    );
-  }
-
-  const isImage = currentMedia.type === 'IMAGE';
+  const isImage = currentAd.mediaType === 'IMAGE';
 
   return (
-    <GestureDetector gesture={panGesture}>
-      <View style={styles.container}>
-        {/* Progress bar */}
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: `${progress}%` }]} />
-        </View>
+    <View style={styles.container}>
+      {/* Progress bar */}
+      <View style={styles.progressBarContainer}>
+        <View style={[styles.progressBar, { width: `${progress}%` }]} />
+      </View>
 
-        {/* Media */}
+      {/* Media Container - Centrado y completo */}
+      <View style={styles.mediaWrapper}>
         <TouchableOpacity
           activeOpacity={1}
           onPress={togglePlayPause}
           style={styles.mediaContainer}
+          disabled={hasReachedEnd}
         >
           {isImage ? (
             <Image
-              source={{ uri: currentMedia.src }}
+              source={{ uri: currentAd.contentUrl }}
               style={styles.media}
               contentFit="contain"
               transition={300}
             />
           ) : (
-            <Video
-              ref={videoRef}
-              source={{ uri: currentMedia.src }}
+            <VideoView
+              player={player}
               style={styles.media}
-              resizeMode={ResizeMode.CONTAIN}
-              shouldPlay={isPlaying}
-              isLooping={false}
-              isMuted={false}
-              onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+              contentFit="contain"
+              nativeControls={false}
             />
           )}
         </TouchableOpacity>
+      </View>
 
-        {/* Play overlay */}
-        {!isPlaying && (
-          <View style={styles.playOverlay}>
-            <TouchableOpacity style={styles.playButton} onPress={togglePlayPause}>
-              <Text style={styles.playIcon}>▶</Text>
+      {/* Play overlay */}
+      {!isPlaying && !hasReachedEnd && (
+        <View style={styles.playOverlay}>
+          <TouchableOpacity style={styles.playButton} onPress={togglePlayPause}>
+            <Text style={styles.playIcon}>▶</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* End of ad overlay - Like prompt */}
+      {hasReachedEnd && !isLiked && (
+        <View style={styles.endOverlay}>
+          <View style={styles.endCard}>
+            <Text style={styles.endTitle}>¡Anuncio completado!</Text>
+            <Text style={styles.endSubtitle}>Dale like para continuar</Text>
+            <TouchableOpacity
+              style={[styles.likeButton, isLikingAd && styles.likeButtonDisabled]}
+              onPress={handleLike}
+              disabled={isLikingAd}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.likeButtonText}>
+                {isLikingAd ? 'Procesando...' : '❤️ Me gusta'}
+              </Text>
             </TouchableOpacity>
           </View>
-        )}
+        </View>
+      )}
 
-        {/* Media Info Overlay */}
-        <View style={styles.infoOverlay}>
+      {/* Loading next ad overlay */}
+      {isLiked && isLoadingAd && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#FFFFFF" />
+          <Text style={styles.loadingOverlayText}>
+            Cargando siguiente anuncio...
+          </Text>
+        </View>
+      )}
+
+      {/* Media Info Overlay - Pegado al bottom con degradado */}
+      <LinearGradient
+        colors={isExpanded ? ['transparent', 'rgba(0,0,0,0.6)'] : ['transparent', 'rgba(0,0,0,0.3)']}
+        style={[styles.infoOverlay, { paddingBottom: insets.bottom }]}
+      >
+        <View style={styles.infoContent}>
           <View style={styles.brandContainer}>
             <View style={styles.brandIcon}>
               <Text style={styles.brandInitial}>
-                {currentMedia.brand?.[0]?.toUpperCase() ?? 'A'}
+                {currentAd.advertiserName?.[0]?.toUpperCase() ?? 'A'}
               </Text>
             </View>
-            <Text style={styles.brandName}>{currentMedia.brand}</Text>
+            <Text style={styles.brandName}>{currentAd.advertiserName}</Text>
           </View>
 
-          <Text style={styles.title}>{currentMedia.title}</Text>
-          <Text style={styles.description} numberOfLines={2}>
-            {currentMedia.description}
+          <Text style={styles.title}>{currentAd.title}</Text>
+          <Text
+            style={[styles.description, !isExpanded && styles.descriptionClamped]}
+            numberOfLines={isExpanded ? undefined : 2}
+          >
+            {currentAd.description}
           </Text>
 
-          <View style={styles.statsContainer}>
-            <Text style={styles.stat}>❤️ {formattedLikes}</Text>
-            <Text style={styles.stat}>
-              ⏱️ {Math.floor(watchTime)}s / {Math.floor(duration)}s
-            </Text>
-          </View>
+          {currentAd.description && currentAd.description.length > 100 && (
+            <TouchableOpacity onPress={() => setIsExpanded((v) => !v)}>
+              <Text style={styles.expandButton}>
+                {isExpanded ? 'Ver menos' : 'Ver más'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
+      </LinearGradient>
 
-        {/* Reward notification */}
-        {showReward && (
-          <Animated.View
-            style={[styles.rewardContainer, { opacity: rewardOpacity }]}
-          >
-            <View style={styles.rewardCard}>
+      {/* Reward notification */}
+      {showReward && rewardAmount !== null && (
+        <Animated.View
+          style={[styles.rewardContainer, 
+          { opacity: rewardOpacity, pointerEvents: 'none' }]}
+        >
+          <View style={styles.rewardCard}>
+            <View style={styles.rewardGlow} />
+            <View style={styles.rewardContent}>
               <Text style={styles.rewardEmoji}>🎉</Text>
               <View>
-                <Text style={styles.rewardTitle}>¡Recompensa desbloqueada!</Text>
-                <Text style={styles.rewardSubtitle}>
-                  Sigue viendo para ganar más
+                <Text style={styles.rewardLabel}>Recompensa obtenida</Text>
+                <Text style={styles.rewardAmount}>
+                  +{rewardAmount}
+                  <Text style={styles.rewardUnit}> puntos</Text>
+                </Text>
+                <Text style={styles.rewardThanks}>
+                  Gracias por ver el anuncio
                 </Text>
               </View>
             </View>
-          </Animated.View>
-        )}
+          </View>
+        </Animated.View>
+      )}
 
-        {/* Controls */}
-        <View style={styles.controlsContainer}>
-          <VideoControls
-            isLiked={isLiked}
-            onLike={handleLike}
-            onShare={handleShare}
-            onSave={handleSave}
-            onNext={handleNext}
-            onPrev={handlePrev}
-            size="md"
-          />
-        </View>
+      {/* Controls */}
+      <View style={styles.controlsContainer}>
+        <VideoControls
+          onVisit={handleVisitAd}
+          onShare={handleShare}
+          onSave={handleSave}
+          size="md"
+        />
       </View>
-    </GestureDetector>
+    </View>
   );
 }
 
@@ -389,21 +467,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
   },
-  errorTitle: {
-    color: '#EF4444',
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  errorMessage: {
-    color: '#EF4444',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  emptyText: {
+  emptyTitle: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 18,
     textAlign: 'center',
   },
   progressBarContainer: {
@@ -419,8 +485,17 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#3B82F6',
   },
-  mediaContainer: {
+  mediaWrapper: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+  },
+  mediaContainer: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   media: {
     width: '100%',
@@ -434,112 +509,187 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   playButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   playIcon: {
-    fontSize: 32,
+    fontSize: 24,
     color: '#FFFFFF',
     marginLeft: 4,
+  },
+  endOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 20,
+    paddingHorizontal: 16,
+  },
+  endCard: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+  },
+  endTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  endSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  likeButton: {
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    backgroundColor: '#EC4899',
+    borderRadius: 24,
+  },
+  likeButtonDisabled: {
+    opacity: 0.5,
+  },
+  likeButtonText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    zIndex: 20,
+  },
+  loadingOverlayText: {
+    color: '#FFFFFF',
+    marginTop: 16,
+    fontSize: 16,
   },
   infoOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 16,
-    paddingTop: 80,
-    paddingBottom: 24,
+    paddingHorizontal: 12,
+    paddingTop: 20,
+    paddingBottom: 16,
     zIndex: 20,
-    backgroundColor: 'transparent',
+  },
+  infoContent: {
+    flexDirection: 'column',
+    bottom: 16,
   },
   brandContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
     gap: 8,
   },
   brandIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#3B82F6',
     justifyContent: 'center',
     alignItems: 'center',
   },
   brandInitial: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },
   brandName: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
   },
   title: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 8,
-    lineHeight: 24,
-  },
-  description: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: 12,
+    marginBottom: 4,
     lineHeight: 20,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 16,
+  description: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 18,
   },
-  stat: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '500',
+  descriptionClamped: {
+    marginBottom: 4,
+  },
+  expandButton: {
+    fontSize: 11,
+    color: '#60A5FA',
+    fontWeight: '600',
+    marginTop: 2,
   },
   rewardContainer: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: [{ translateX: -150 }, { translateY: -50 }],
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 30,
   },
   rewardCard: {
+    position: 'relative',
+    backgroundColor: '#10B981',
+    paddingHorizontal: 32,
+    paddingVertical: 24,
+    borderRadius: 16,
+  },
+  rewardGlow: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    right: -4,
+    bottom: -4,
+    borderRadius: 16,
+    backgroundColor: '#34D399',
+    opacity: 0.3,
+  },
+  rewardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#10B981',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 24,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    gap: 16,
   },
   rewardEmoji: {
     fontSize: 32,
   },
-  rewardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  rewardSubtitle: {
-    fontSize: 12,
+  rewardLabel: {
+    fontSize: 11,
     color: 'rgba(255,255,255,0.9)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  rewardAmount: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: 32,
+  },
+  rewardUnit: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  rewardThanks: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.9)',
+    marginTop: 4,
   },
   controlsContainer: {
     position: 'absolute',
-    right: 16,
-    bottom: 96,
+    right: 12,
+    top: '50%',
+    transform: [{ translateY: -80 }],
     zIndex: 30,
   },
 });

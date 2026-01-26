@@ -1,6 +1,7 @@
 export interface AuthContextValue {
   accessToken: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
   setAccessToken: (token: string | null) => void;
-  refreshAccessToken: () => Promise<string | null>;
   logout: () => Promise<void>;
 }

@@ -8,9 +8,15 @@ export interface AdForConsumerDTO {
   advertiserId: number;
   advertiserName: string;
   mediaType: AdMediaType;
+  sessionUUID: string;
 }
 
 export enum AdMediaType {
   IMAGE = 'IMAGE',
   VIDEO = 'VIDEO',
+}
+
+export interface LikeAdResponse {
+  liked: boolean;
+  rewardAmount: number;
 }

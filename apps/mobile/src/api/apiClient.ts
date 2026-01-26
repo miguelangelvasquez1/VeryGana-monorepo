@@ -1,5 +1,4 @@
 // src/api/apiClient.ts
-import axios from 'axios';
 import { createHttpClient } from '@verygana/api';
 import { getRefreshToken } from '../auth/tokenStorage';
 import { refreshAccessToken } from '../auth/authService';
@@ -49,6 +48,12 @@ apiClient.interceptors.response.use(
 
       error.config.headers.Authorization = `Bearer ${res.accessToken}`;
       return apiClient(error.config);
+
+    } catch (err) {
+      queue = [];
+      authRef.current?.logout();
+      throw err;
+      
     } finally {
       isRefreshing = false;
     }

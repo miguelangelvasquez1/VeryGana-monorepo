@@ -2,21 +2,16 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 interface VideoControlsProps {
-  isLiked: boolean;
-  onLike: () => void;
+  onVisit: () => void;
   onShare: () => void;
   onSave: () => void;
-  onNext: () => void;
-  onPrev?: () => void;
   size?: 'sm' | 'md' | 'lg';
 }
 
 export default function VideoControls({
-  isLiked,
-  onLike,
+  onVisit,
   onShare,
   onSave,
-  onNext,
   size = 'lg',
 }: VideoControlsProps) {
   const iconSize = size === 'sm' ? 24 : size === 'md' ? 28 : 32;
@@ -26,18 +21,13 @@ export default function VideoControls({
     <View style={styles.container}>
       <TouchableOpacity
         style={styles.button}
-        onPress={onLike}
+        onPress={onVisit}
         activeOpacity={0.7}
       >
         <View style={styles.iconContainer}>
-          <Feather
-            name="heart"
-            size={iconSize}
-            color={isLiked ? '#EF4444' : '#FFFFFF'}
-            style={isLiked ? styles.likedIcon : undefined}
-          />
+          <Feather name="external-link" size={iconSize} color="#FFFFFF" />
         </View>
-        <Text style={[styles.label, { fontSize: textSize }]}>Me gusta</Text>
+        <Text style={[styles.label, { fontSize: textSize }]}>Visitar</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -50,35 +40,13 @@ export default function VideoControls({
         </View>
         <Text style={[styles.label, { fontSize: textSize }]}>Compartir</Text>
       </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={onSave}
-        activeOpacity={0.7}
-      >
-        <View style={styles.iconContainer}>
-          <Feather name="bookmark" size={iconSize} color="#FFFFFF" />
-        </View>
-        <Text style={[styles.label, { fontSize: textSize }]}>Guardar</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={onNext}
-        activeOpacity={0.7}
-      >
-        <View style={styles.iconContainer}>
-          <Feather name="skip-forward" size={iconSize} color="#FFFFFF" />
-        </View>
-        <Text style={[styles.label, { fontSize: textSize }]}>Siguiente</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    gap: 16,
+    gap: 24,
     alignItems: 'center',
   },
   button: {
@@ -97,11 +65,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  likedIcon: {
-    color: '#EF4444',
+    textShadowColor: 'rgba(0,0,0,0.9)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
 });

@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { loginUser } from '@verygana/api'
 import { useAuth } from '../../src/auth/useAuth';
+import { login } from '../../src/auth/authService';
 
 export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
@@ -43,15 +43,15 @@ export default function LoginScreen() {
         return;
       }
 
-      const loginResponse = await loginUser(identifier, password);
+      const loginResponse = await login(identifier, password);
       setAccessToken(loginResponse.accessToken);
       const role = loginResponse.role;
 
-      console.log('✅ Logged in as role:', role);
+      console.log('✅ Logged in');
 
       // Navegación según rol
       if (role === 'ROLE_CONSUMER') {
-        router.replace('/(tabs)/ads');
+        router.replace('/(tabs)/home');
       }
     } catch (err: any) {
       console.error('❌ Login error:', err);
@@ -101,7 +101,7 @@ export default function LoginScreen() {
                 onChangeText={(text) =>
                   setFormData({ ...formData, identifier: text })
                 }
-                placeholder="ej. usuario@correo.com o 3001234567"
+                placeholder="Ingrese su correo o teléfono"
                 placeholderTextColor="#9CA3AF"
                 keyboardType="email-address"
                 autoCapitalize="none"

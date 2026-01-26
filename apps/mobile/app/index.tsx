@@ -1,22 +1,12 @@
-import { Text, View, Button } from 'react-native';
-import { apiClient } from '@verygana/api';
-import { router } from 'expo-router';
+import { Redirect } from 'expo-router';
+import { useAuth } from '../src/auth/useAuth';
 
-export default function HomeScreen() {
-  const testApi = async () => {
-    try {
-      router.push("/(auth)/login");
-      const res = await apiClient.get('/health');
-      console.log(res.data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
+export default function Index() {
+  const { isAuthenticated, isLoading } = useAuth();
 
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text>VerYGana Mobile 🚀</Text>
-      <Button title="Probar API" onPress={testApi} />
-    </View>
-  );
+  if (isLoading) return null;
+
+  return isAuthenticated
+    ? <Redirect href="/home" />
+    : <Redirect href="/login" />;
 }

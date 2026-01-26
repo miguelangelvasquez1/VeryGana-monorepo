@@ -1,12 +1,12 @@
-// apps/mobile/app/(tabs)/products.tsx
+// apps/mobile/app/(tabs)/products.tsx. Aqui van productos y recargas
 import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const ProductsScreen: React.FC = () => {
   return (
