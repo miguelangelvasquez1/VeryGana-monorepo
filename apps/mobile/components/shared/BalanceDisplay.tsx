@@ -1,6 +1,5 @@
 // apps/mobile/components/layout/BalanceDisplay.tsx
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { Coins } from 'lucide-react-native';
 import { useUserBalance } from '../../src/hooks/consumerHooks';
 import { Image } from 'expo-image';
 

@@ -9,7 +9,6 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Platform,
   Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
