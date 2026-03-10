@@ -57,7 +57,7 @@ export default function GamesPanelPage() {
         sponsored: true,
       });
 
-      router.push(`/games/play?token=${response.sessionToken}`);
+      router.push(`/games/play?token=${response.url}`);
     } catch (error) {
       console.error('Error initializing sponsored game', error);
     }
@@ -67,10 +67,11 @@ export default function GamesPanelPage() {
     try {
       const response = await initGameMutation.mutateAsync({
         gameId: game.id,
-        sponsored: false,
+        sponsored: true,
       });
 
-      router.push(`/games/play?token=${response.sessionToken}`);
+      console.log('Game init response', response);
+      router.push(`/games/play?url=${response.url}`);
     } catch (error) {
       console.error('Error initializing game', error);
     }

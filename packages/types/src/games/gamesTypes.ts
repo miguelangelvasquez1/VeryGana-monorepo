@@ -17,7 +17,8 @@ export interface GameDTO {
 export interface GameCardResponseDTO {
   id: number;
   title: string;
-  imageUrl: string;
+  description: string;
+  frontPageUrl: string;
   sponsored: boolean;
   rewardText?: string; // ej: "Gana hasta $500"
 }
@@ -37,12 +38,7 @@ export interface InitGameRequestDTO {
 }
 
 export interface InitGameResponseDTO {
-  sessionToken: string;
-  userHash: string;
-  gameId: number;
-  campaignId: number;
-  assets: AssetDTO[];
-  jsonConfig: string;
+  url: string;
 }
 
 export interface GameEventDTO<T> {

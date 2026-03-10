@@ -27,7 +27,7 @@ export default function GameCard({
     >
       <View style={styles.imageContainer}>
         <Image
-          source={{ uri: game.imageUrl }}
+          source={{ uri: game.frontPageUrl }}
           style={styles.image}
           contentFit="cover"
           transition={200}
